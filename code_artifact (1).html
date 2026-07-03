@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบจัดการสต๊อกสินค้า</title>
+    
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Load FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Load Google Fonts (Prompt) for Thai Language -->
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Configure Tailwind -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Prompt', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: '#4F46E5', // Indigo 600
+                        primaryHover: '#4338CA', // Indigo 700
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: #F3F4F6; /* Gray 100 */
+        }
+        /* Custom Scrollbar for a cleaner look */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #CBD5E1;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94A3B8;
+        }
+        
+        /* Modal Transition */
+        .modal-enter {
+            opacity: 0;
+            transform: scale(0.95);
+        }
+        .modal-enter-active {
+            opacity: 1;
+            transform: scale(1);
+            transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+        }
+        .modal-leave {
+            opacity: 1;
+            transform: scale(1);
+        }
+        .modal-leave-active {
+            opacity: 0;
+            transform: scale(0.95);
+            transition: opacity 0.2s ease-in, transform 0.2s ease-in;
+        }
+
+        /* Toast notification */
+        #toast-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .toast {
+            min-width: 250px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 500;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            transform: translateX(120%);
+            transition: transform 0.3s ease-out;
+        }
+        .toast.show {
+            transform: translateX(0);
+        }
+        .toast.success { background-color: #10B981; } /* Emerald 500 */
+        .toast.error { background-color: #EF4444; } /* Red 500 */
+        
+        /* Hide scrollbar for category list on mobile but allow scrolling */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="text-gray-800 h-screen flex flex-col md:flex-row overflow-hidden">
+
+    <!-- Sidebar / Topbar for Mobile -->
+    <aside class="w-full md:w-64 bg-white border-r border-gray-200 flex flex-col shrink-0 md:h-full z-10 shadow-sm">
+        <div class="p-5 border-b border-gray-100 flex items-center justify-between">
+            <h1 class="text-xl font-bold text-primary flex items-center gap-2">
+                <i class="fa-solid fa-boxes-stacked"></i>
+                StockMaster
+            </h1>
+        </div>
+        
+        <div class="p-4 flex-1 overflow-y-auto">
+            <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 hidden md:block">หมวดหมู่สินค้า</h2>
+            
+            <!-- Category List (Horizontal on mobile, Vertical on desktop) -->
+            <ul id="categoryList" class="flex md:flex-col gap-2 overflow-x-auto no-scrollbar pb-2 md:pb-0">
+                <!-- Categories will be injected here via JS -->
+            </ul>
+        </div>
+        
+        <div class="p-4 border-t border-gray-100 hidden md:block">
+            <div class="bg-indigo-50 rounded-lg p-4 text-center">
+                <p class="text-sm text-indigo-800 font-medium mb-1">สินค้าทั้งหมดในสต๊อก</p>
+                <p id="totalStockCount" class="text-2xl font-bold text-primary">0</p>
+                <p class="text-xs text-indigo-600">ชิ้น</p>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 flex flex-col h-full overflow-hidden relative">
+        
+        <!-- Header & Search -->
+        <header class="bg-white p-4 border-b border-gray-200 flex flex-col sm:flex-row gap-4 justify-between items-center z-10 shadow-sm">
+            <div class="relative w-full sm:w-96">
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <i class="fa-solid fa-magnifying-glass text-gray-400"></i>
+                </div>
+                <input type="text" id="searchInput" placeholder="ค้นหาสินค้า (ชื่อ, รหัส)..." 
+                    class="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg leading-5 bg-gray-50 placeholder-gray-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-primary focus:border-primary sm:text-sm transition-colors duration-200">
+            </div>
+            
+            <button onclick="openModal()" class="w-full sm:w-auto bg-primary hover:bg-primaryHover text-white px-5 py-2.5 rounded-lg font-medium shadow-sm flex items-center justify-center gap-2 transition-colors duration-200">
+                <i class="fa-solid fa-plus"></i> เพิ่มสินค้าใหม่
+            </button>
+        </header>
+
+        <!-- Product Grid Area -->
+        <div class="flex-1 overflow-y-auto p-4 md:p-6 bg-gray-50">
+            <div class="mb-4 flex justify-between items-end">
+                <div>
+                    <h2 id="currentCategoryTitle" class="text-2xl font-bold text-gray-800">สินค้าทั้งหมด</h2>
+                    <p id="itemCountDisplay" class="text-sm text-gray-500 mt-1">แสดง 0 รายการ</p>
+                </div>
+            </div>
+
+            <!-- Empty State (Hidden by default) -->
+            <div id="emptyState" class="hidden flex-col items-center justify-center py-20 text-center">
+                <div class="w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                    <i class="fa-solid fa-box-open text-4xl text-gray-400"></i>
+                </div>
+                <h3 class="text-lg font-medium text-gray-900 mb-1">ไม่พบสินค้า</h3>
+                <p class="text-gray-500 max-w-sm">ลองค้นหาด้วยคำอื่น หรือเพิ่มสินค้าใหม่เข้าสู่ระบบ</p>
+            </div>
+
+            <!-- Grid Container -->
+            <div id="productGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
+                <!-- Product Cards will be injected here via JS -->
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal Backdrop -->
+    <div id="modalBackdrop" class="fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-40 hidden flex items-center justify-center p-4">
+        <!-- Modal Content -->
+        <div id="productModal" class="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh] modal-enter">
+            
+            <!-- Modal Header -->
+            <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                <h3 id="modalTitle" class="text-lg font-bold text-gray-800">เพิ่มสินค้าใหม่</h3>
+                <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 transition-colors">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            
+            <!-- Modal Body (Form) -->
+            <div class="p-6 overflow-y-auto">
+                <form id="productForm" class="space-y-4">
+                    <input type="hidden" id="productId">
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อสินค้า <span class="text-red-500">*</span></label>
+                        <input type="text" id="productName" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary">
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">หมวดหมู่ <span class="text-red-500">*</span></label>
+                            <select id="productCategory" required class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary bg-white">
+                                <!-- Options injected via JS -->
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">รหัส SKU</label>
+                            <input type="text" id="productSku" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary">
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">ราคา (บาท) <span class="text-red-500">*</span></label>
+                            <input type="number" id="productPrice" required min="0" step="0.01" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">จำนวนตั้งต้น <span class="text-red-500">*</span></label>
+                            <input type="number" id="productStock" required min="0" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">URL รูปภาพ (ตัวเลือก)</label>
+                        <input type="url" id="productImage" placeholder="https://example.com/image.jpg" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary text-sm">
+                        <p class="text-xs text-gray-500 mt-1">หากเว้นว่างไว้ ระบบจะใช้รูปภาพพื้นฐานให้</p>
+                    </div>
+                </form>
+            </div>
+            
+            <!-- Modal Footer -->
+            <div class="px-6 py-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50">
+                <button onclick="closeModal()" class="px-4 py-2 text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition-colors">
+                    ยกเลิก
+                </button>
+                <button onclick="saveProduct()" class="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primaryHover font-medium transition-colors shadow-sm">
+                    บันทึกข้อมูล
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Delete Modal -->
+    <div id="deleteModal" class="fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden p-6 text-center">
+            <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i class="fa-solid fa-triangle-exclamation text-3xl text-red-500"></i>
+            </div>
+            <h3 class="text-lg font-bold text-gray-800 mb-2">ยืนยันการลบสินค้า?</h3>
+            <p class="text-gray-500 text-sm mb-6">คุณแน่ใจหรือไม่ที่ต้องการลบสินค้านี้ ข้อมูลที่ลบจะไม่สามารถกู้คืนได้</p>
+            <div class="flex justify-center gap-3">
+                <button onclick="closeDeleteModal()" class="px-4 py-2 flex-1 text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 font-medium transition-colors">
+                    ยกเลิก
+                </button>
+                <button id="confirmDeleteBtn" class="px-4 py-2 flex-1 bg-red-500 text-white rounded-lg hover:bg-red-600 font-medium transition-colors shadow-sm">
+                    ลบสินค้า
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <script>
+        // --- State Management ---
+        const MOCK_CATEGORIES = [
+            { id: 'cat-all', name: 'ทั้งหมด', icon: 'fa-table-cells' },
+            { id: 'cat-drink', name: 'เครื่องดื่ม', icon: 'fa-bottle-water' },
+            { id: 'cat-food', name: 'ขนมและอาหาร', icon: 'fa-burger' },
+            { id: 'cat-home', name: 'ของใช้ในบ้าน', icon: 'fa-pump-soap' },
+            { id: 'cat-electric', name: 'เครื่องใช้ไฟฟ้า', icon: 'fa-plug' }
+        ];
+
+        // Initial Data (Mock)
+        let products = [
+            { id: 1, name: "น้ำดื่มคริสตัล 600ml (แพ็ค 12)", categoryId: "cat-drink", sku: "DRK-001", price: 55, stock: 45, image: "" },
+            { id: 2, name: "น้ำอัดลม โค้ก 1.5 ลิตร", categoryId: "cat-drink", sku: "DRK-002", price: 30, stock: 12, image: "" },
+            { id: 3, name: "เลย์ รสมันฝรั่งแท้ 73g", categoryId: "cat-food", sku: "FOD-001", price: 30, stock: 50, image: "" },
+            { id: 4, name: "มาม่า รสหมูสับ (แพ็ค 10)", categoryId: "cat-food", sku: "FOD-002", price: 65, stock: 20, image: "" },
+            { id: 5, name: "ผงซักฟอก บรีส 1500g", categoryId: "cat-home", sku: "HOM-001", price: 120, stock: 8, image: "" },
+            { id: 6, name: "สบู่ นกแก้ว (แพ็ค 4)", categoryId: "cat-home", sku: "HOM-002", price: 45, stock: 30, image: "" },
+            { id: 7, name: "ปลั๊กพ่วง 3 ตา 5 เมตร", categoryId: "cat-electric", sku: "ELE-001", price: 250, stock: 5, image: "" }
+        ];
+
+        let currentCategoryId = 'cat-all';
+        let searchQuery = '';
+        let itemToDelete = null;
+
+        // --- DOM Elements ---
+        const categoryListEl = document.getElementById('categoryList');
+        const productGridEl = document.getElementById('productGrid');
+        const searchInputEl = document.getElementById('searchInput');
+        const emptyStateEl = document.getElementById('emptyState');
+        const currentCategoryTitleEl = document.getElementById('currentCategoryTitle');
+        const itemCountDisplayEl = document.getElementById('itemCountDisplay');
+        const totalStockCountEl = document.getElementById('totalStockCount');
+        
+        // Modal Elements
+        const modalBackdrop = document.getElementById('modalBackdrop');
+        const productModal = document.getElementById('productModal');
+        const productForm = document.getElementById('productForm');
+        const categorySelectEl = document.getElementById('productCategory');
+        const modalTitle = document.getElementById('modalTitle');
+        const deleteModal = document.getElementById('deleteModal');
+
+        
+        // --- Render Functions ---
+
+        // Generate Placehoder Image URL based on category
+        function getPlaceholderImage(categoryName) {
+            const colors = ['4F46E5', '10B981', 'F59E0B', 'EF4444', '8B5CF6'];
+            const randomColor = colors[Math.floor(Math.random() * colors.length)];
+            const text = encodeURIComponent(categoryName.substring(0, 3));
+            return `https://placehold.co/300x200/${randomColor}/ffffff?text=${text}&font=Montserrat`;
+        }
+
+        // Render Sidebar Categories
+        function renderCategories() {
+            categoryListEl.innerHTML = '';
+            
+            // Populate Dropdown in Modal at the same time
+            categorySelectEl.innerHTML = '<option value="" disabled selected>เลือกหมวดหมู่</option>';
+
+            MOCK_CATEGORIES.forEach(category => {
+                // Sidebar Item
+                const li = document.createElement('li');
+                const isSelected = currentCategoryId === category.id;
+                
+                li.innerHTML = `
+                    <button onclick="selectCategory('${category.id}')" 
+                        class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 whitespace-nowrap
+                        ${isSelected 
+                            ? 'bg-indigo-50 text-primary' 
+                            : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}">
+                        <i class="fa-solid ${category.icon} w-5 text-center ${isSelected ? 'text-primary' : 'text-gray-400'}"></i>
+                        <span>${category.name}</span>
+                    </button>
+                `;
+                categoryListEl.appendChild(li);
+
+                // Modal Dropdown (skip 'All')
+                if (category.id !== 'cat-all') {
+                    const option = document.createElement('option');
+                    option.value = category.id;
+                    option.textContent = category.name;
+                    categorySelectEl.appendChild(option);
+                }
+            });
+        }
+
+        // Render Product Grid
+        function renderProducts() {
+            // Filter products
+            let filteredProducts = products;
+            
+            // Filter by Category
+            if (currentCategoryId !== 'cat-all') {
+                filteredProducts = filteredProducts.filter(p => p.categoryId === currentCategoryId);
+            }
+            
+            // Filter by Search
+            if (searchQuery.trim() !== '') {
+                const query = searchQuery.toLowerCase();
+                filteredProducts = filteredProducts.filter(p => 
+                    p.name.toLowerCase().includes(query) || 
+                    (p.sku && p.sku.toLowerCase().includes(query))
+                );
+            }
+
+            // Update UI Counters
+            const currentCatObj = MOCK_CATEGORIES.find(c => c.id === currentCategoryId);
+            currentCategoryTitleEl.textContent = currentCatObj ? currentCatObj.name : 'สินค้าทั้งหมด';
+            itemCountDisplayEl.textContent = `แสดง ${filteredProducts.length} รายการ`;
+            
+            // Update Global Total Stock
+            const totalItems = products.reduce((sum, p) => sum + parseInt(p.stock), 0);
+            totalStockCountEl.textContent = totalItems.toLocaleString();
+
+            productGridEl.innerHTML = '';
+
+            if (filteredProducts.length === 0) {
+                productGridEl.classList.add('hidden');
+                emptyStateEl.classList.remove('hidden');
+                emptyStateEl.classList.add('flex');
+                return;
+            } else {
+                productGridEl.classList.remove('hidden');
+                emptyStateEl.classList.add('hidden');
+                emptyStateEl.classList.remove('flex');
+            }
+
+            filteredProducts.forEach(product => {
+                const category = MOCK_CATEGORIES.find(c => c.id === product.categoryId);
+                const categoryName = category ? category.name : 'ไม่ระบุ';
+                const imgSrc = product.image ? product.image : getPlaceholderImage(categoryName);
+                
+                // Determine stock status styling
+                let stockStatusClass = 'text-green-600 bg-green-50 border-green-200';
+                let stockIcon = '<div class="w-2 h-2 rounded-full bg-green-500 mr-1.5"></div>';
+                if (product.stock <= 0) {
+                    stockStatusClass = 'text-red-600 bg-red-50 border-red-200';
+                    stockIcon = '<div class="w-2 h-2 rounded-full bg-red-500 mr-1.5"></div>';
+                } else if (product.stock <= 10) {
+                    stockStatusClass = 'text-orange-600 bg-orange-50 border-orange-200';
+                    stockIcon = '<div class="w-2 h-2 rounded-full bg-orange-500 mr-1.5"></div>';
+                }
+
+                const card = document.createElement('div');
+                card.className = 'bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow duration-300 flex flex-col';
+                card.innerHTML = `
+                    <div class="h-40 bg-gray-200 relative overflow-hidden group">
+                        <img src="${imgSrc}" alt="${product.name}" class="w-full h-full object-cover" onerror="this.src='https://placehold.co/300x200/e2e8f0/64748b?text=No+Image'">
+                        
+                        <!-- Action overlay on hover -->
+                        <div class="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                            <button onclick="editProduct(${product.id})" class="w-8 h-8 rounded-full bg-white text-gray-600 hover:text-primary shadow-sm flex items-center justify-center transition-colors">
+                                <i class="fa-solid fa-pen text-xs"></i>
+                            </button>
+                            <button onclick="confirmDelete(${product.id})" class="w-8 h-8 rounded-full bg-white text-gray-600 hover:text-red-500 shadow-sm flex items-center justify-center transition-colors">
+                                <i class="fa-solid fa-trash text-xs"></i>
+                            </button>
+                        </div>
+                        
+                        <div class="absolute bottom-2 left-2">
+                            <span class="px-2 py-1 text-xs font-medium bg-white/90 text-gray-700 rounded shadow-sm backdrop-blur-sm">
+                                ${categoryName}
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <div class="p-4 flex-1 flex flex-col">
+                        <div class="text-xs text-gray-400 mb-1 font-mono">${product.sku || '-'}</div>
+                        <h3 class="font-semibold text-gray-800 text-sm leading-tight mb-2 line-clamp-2" title="${product.name}">${product.name}</h3>
+                        <div class="text-lg font-bold text-primary mt-auto">฿${parseFloat(product.price).toLocaleString()}</div>
+                    </div>
+                    
+                    <div class="px-4 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
+                        <div class="flex items-center text-xs font-medium px-2 py-1 border rounded-md ${stockStatusClass}">
+                            ${stockIcon} คงเหลือ: ${product.stock}
+                        </div>
+                        
+                        <!-- Quick Stock Adjustment -->
+                        <div class="flex bg-white border border-gray-200 rounded-md shadow-sm overflow-hidden">
+                            <button onclick="adjustStock(${product.id}, -1)" class="w-8 h-7 flex items-center justify-center text-gray-500 hover:bg-gray-100 hover:text-red-500 transition-colors" ${product.stock <= 0 ? 'disabled' : ''}>
+                                <i class="fa-solid fa-minus text-xs"></i>
+                            </button>
+                            <div class="w-8 h-7 flex items-center justify-center text-sm font-medium border-x border-gray-200">
+                                ${product.stock}
+                            </div>
+                            <button onclick="adjustStock(${product.id}, 1)" class="w-8 h-7 flex items-center justify-center text-gray-500 hover:bg-gray-100 hover:text-green-500 transition-colors">
+                                <i class="fa-solid fa-plus text-xs"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+                productGridEl.appendChild(card);
+            });
+        }
+
+        
+        // --- Interactions & Business Logic ---
+
+        function selectCategory(categoryId) {
+            currentCategoryId = categoryId;
+            renderCategories(); // Re-render to update selected styling
+            renderProducts();
+        }
+
+        // Search listener
+        searchInputEl.addEventListener('input', (e) => {
+            searchQuery = e.target.value;
+            renderProducts();
+        });
+
+        // Quick Stock Adjustment
+        function adjustStock(id, change) {
+            const product = products.find(p => p.id === id);
+            if (product) {
+                const newStock = parseInt(product.stock) + change;
+                if (newStock >= 0) {
+                    product.stock = newStock;
+                    renderProducts();
+                    
+                    // Optional: Show subtle toast if needed, but UI update is usually enough
+                    if(change > 0) showToast(`เพิ่มสต๊อก ${product.name} สำเร็จ`, 'success');
+                }
+            }
+        }
+
+        // --- Modal Management ---
+        function openModal(productId = null) {
+            productForm.reset();
+            
+            if (productId) {
+                // Edit Mode
+                modalTitle.textContent = 'แก้ไขข้อมูลสินค้า';
+                const product = products.find(p => p.id === productId);
+                if (product) {
+                    document.getElementById('productId').value = product.id;
+                    document.getElementById('productName').value = product.name;
+                    document.getElementById('productCategory').value = product.categoryId;
+                    document.getElementById('productSku').value = product.sku || '';
+                    document.getElementById('productPrice').value = product.price;
+                    document.getElementById('productStock').value = product.stock;
+                    document.getElementById('productImage').value = product.image || '';
+                }
+            } else {
+                // Add Mode
+                modalTitle.textContent = 'เพิ่มสินค้าใหม่';
+                document.getElementById('productId').value = '';
+                // Auto-select category if not 'All'
+                if(currentCategoryId !== 'cat-all') {
+                    document.getElementById('productCategory').value = currentCategoryId;
+                }
+            }
+            
+            modalBackdrop.classList.remove('hidden');
+            // Small delay to allow display block to apply before animation classes
+            setTimeout(() => {
+                productModal.classList.remove('modal-enter');
+                productModal.classList.add('modal-enter-active');
+            }, 10);
+        }
+
+        function closeModal() {
+            productModal.classList.remove('modal-enter-active');
+            productModal.classList.add('modal-leave-active');
+            
+            setTimeout(() => {
+                modalBackdrop.classList.add('hidden');
+                productModal.classList.remove('modal-leave-active');
+                productModal.classList.add('modal-enter'); // Reset for next open
+            }, 200);
+        }
+
+        function editProduct(id) {
+            openModal(id);
+        }
+
+        // Save Form (Add / Edit)
+        function saveProduct() {
+            if (!productForm.checkValidity()) {
+                productForm.reportValidity();
+                return;
+            }
+
+            const id = document.getElementById('productId').value;
+            const newProduct = {
+                name: document.getElementById('productName').value,
+                categoryId: document.getElementById('productCategory').value,
+                sku: document.getElementById('productSku').value,
+                price: parseFloat(document.getElementById('productPrice').value),
+                stock: parseInt(document.getElementById('productStock').value),
+                image: document.getElementById('productImage').value
+            };
+
+            if (id) {
+                // Update existing
+                const index = products.findIndex(p => p.id === parseInt(id));
+                if (index !== -1) {
+                    products[index] = { ...products[index], ...newProduct };
+                    showToast('บันทึกการแก้ไขเรียบร้อย', 'success');
+                }
+            } else {
+                // Add new
+                const newId = products.length > 0 ? Math.max(...products.map(p => p.id)) + 1 : 1;
+                products.push({ id: newId, ...newProduct });
+                showToast('เพิ่มสินค้าใหม่เรียบร้อย', 'success');
+            }
+
+            closeModal();
+            renderProducts();
+        }
+
+        // --- Delete Logic ---
+        function confirmDelete(id) {
+            itemToDelete = id;
+            deleteModal.classList.remove('hidden');
+        }
+
+        function closeDeleteModal() {
+            itemToDelete = null;
+            deleteModal.classList.add('hidden');
+        }
+
+        document.getElementById('confirmDeleteBtn').addEventListener('click', () => {
+            if (itemToDelete) {
+                products = products.filter(p => p.id !== itemToDelete);
+                closeDeleteModal();
+                renderProducts();
+                showToast('ลบสินค้าออกจากระบบแล้ว', 'success');
+            }
+        });
+
+        // --- Toast Notification System ---
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type} flex items-center gap-2`;
+            
+            const icon = type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation';
+            toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span>${message}</span>`;
+            
+            container.appendChild(toast);
+            
+            // Trigger animation
+            setTimeout(() => toast.classList.add('show'), 10);
+            
+            // Remove after 3 seconds
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Close modals on clicking backdrop
+        modalBackdrop.addEventListener('click', (e) => {
+            if (e.target === modalBackdrop) closeModal();
+        });
+        deleteModal.addEventListener('click', (e) => {
+            if (e.target === deleteModal) closeDeleteModal();
+        });
+
+        // Prevent form default submission
+        productForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            saveProduct();
+        });
+
+        // --- Initialization ---
+        window.onload = () => {
+            renderCategories();
+            renderProducts();
+        };
+
+    </script>
+</body>
+</html>
